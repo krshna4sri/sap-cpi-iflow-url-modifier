@@ -1,0 +1,74 @@
+import zipfile
+import os
+import shutil
+
+def unzip_file(zip_path, extract_to):
+    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+        zip_ref.extractall(extract_to)
+
+def zip_files(directory, zip_path):
+    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        for root, _, files in os.walk(directory):
+            for file in files:
+                file_path = os.path.join(root, file)
+                arcname = os.path.relpath(file_path, start=directory)
+                zipf.write(file_path, arcname=arcname)
+
+def find_and_replace_binary(file_path, old_string, new_string):
+    try:
+        with open(file_path, 'rb') as file:
+            content = file.read()
+        new_content = content.replace(old_string.encode(), new_string.encode())
+        if content != new_content:
+            with open(file_path, 'wb') as file:
+                file.write(new_content)
+            return True
+    except Exception as e:
+        print(f"Failed to process file {file_path}: {e}")
+    return False
+
+def process_nested_zip_file(file_path, old_string, new_string):
+    nested_extract_to = file_path + '_extracted'
+    os.makedirs(nested_extract_to, exist_ok=True)
+    try:
+        unzip_file(file_path, nested_extract_to)
+        process_files_in_directory(nested_extract_to, old_string, new_string)
+        new_zip_path = file_path + '_modified.zip'
+        zip_files(nested_extract_to, new_zip_path)
+        shutil.move(new_zip_path, file_path)
+    finally:
+        shutil.rmtree(nested_extract_to, ignore_errors=True)
+
+def process_files_in_directory(directory_path, old_string, new_string):
+    for root, _, files in os.walk(directory_path):
+        for file in files:
+            file_path = os.path.join(root, file)
+            if zipfile.is_zipfile(file_path):
+                print(f"Processing nested zip file: {file_path}")
+                process_nested_zip_file(file_path, old_string, new_string)
+            else:
+                print(f"Checking file: {file_path}")
+                if find_and_replace_binary(file_path, old_string, new_string):
+                    print(f"Modified file: {file_path}")
+
+def process_zip_file(zip_path, old_string, new_string):
+    extract_to = 'extracted_files'
+    if os.path.exists(extract_to):
+        shutil.rmtree(extract_to)
+    os.makedirs(extract_to, exist_ok=True)
+
+    unzip_file(zip_path, extract_to)
+    process_files_in_directory(extract_to, old_string, new_string)
+
+    modified_zip_path = zip_path.replace('.zip', '_modified.zip')
+    zip_files(extract_to, modified_zip_path)
+    print(f"Processed and updated ZIP file: {modified_zip_path}")
+
+    shutil.rmtree(extract_to, ignore_errors=True)
+
+# Example usage
+zip_path = '/content/Smartapp ONE™.zip'
+old_string = '<Source>.s4hana.cloud.sap:<Portname>'
+new_string = '<Target>.s4hana.cloud.sap:<Portname>'
+
+process_zip_file(zip_path, old_string, new_string)
